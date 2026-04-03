@@ -1,4 +1,7 @@
 import os
+
+os.environ["HF_HOME"] = os.path.join(os.getcwd(), "model_cache")
+
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 from faster_whisper import WhisperModel

@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
 
+os.environ["HF_HOME"] = os.path.join(os.getcwd(), "model_cache")
+
 from slowapi import Limiter
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address

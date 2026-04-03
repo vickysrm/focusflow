@@ -1,33 +1,41 @@
 import ollama
-from typing import Optional
 import os
 
-# Default to local qwen2:1.5b unless requested otherwise
+# Default local model
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2:1.5b")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-try:
-    if GROQ_API_KEY:
+# Groq client is initialized lazily to ensure env vars are loaded first
+_groq_client = None
+
+def _get_groq_client():
+    global _groq_client
+    if _groq_client is not None:
+        return _groq_client
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return None
+    try:
         from groq import Groq
-        groq_client = Groq(api_key=GROQ_API_KEY)
-    else:
-        groq_client = None
-except ImportError:
-    groq_client = None
+        _groq_client = Groq(api_key=api_key)
+        print("Groq client initialized successfully.")
+        return _groq_client
+    except Exception as e:
+        print(f"Groq init failed: {e}")
+        return None
 
 
 def _call_llm(prompt: str) -> str:
-    """Intelligently route to Cloud Groq API if key exists, otherwise local Ollama."""
-    if groq_client:
-        # Use cloud Groq for blazing fast deployment inference
-        chat_completion = groq_client.chat.completions.create(
+    """Route to Groq if key is available, otherwise Ollama."""
+    client = _get_groq_client()
+    if client:
+        chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama3-8b-8192",
             temperature=0.3,
         )
         return chat_completion.choices[0].message.content
     else:
-        # Fallback to local Ollama daemon
+        # Fallback to local Ollama
         response = ollama.chat(model=OLLAMA_MODEL, messages=[
             {'role': 'user', 'content': prompt}
         ])

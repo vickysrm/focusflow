@@ -20,3 +20,4 @@ services:
   - type: redis
     name: focusflow-redis
     plan: free
+    ipAllowList: []

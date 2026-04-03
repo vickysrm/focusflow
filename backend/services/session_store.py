@@ -1,24 +1,35 @@
-import redis
 import json
 import os
 from typing import Optional
 
-_client: Optional[redis.Redis] = None
+# Try to use Redis if available, otherwise fall back to in-memory store
+_client = None
+_in_memory_store: dict = {}
+_use_redis = False
 
-def get_redis() -> redis.Redis:
-    global _client
-    if _client is None:
-        _client = redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379"),
-            decode_responses=True,
-        )
-    return _client
+def _init_redis():
+    global _client, _use_redis
+    redis_url = os.getenv("REDIS_URL", "")
+    if not redis_url:
+        print("No REDIS_URL set — using in-memory session store.")
+        return
+    try:
+        import redis
+        _client = redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=3)
+        _client.ping()
+        _use_redis = True
+        print(f"Connected to Redis at {redis_url[:30]}...")
+    except Exception as e:
+        print(f"Redis unavailable ({e}) — falling back to in-memory store.")
+        _client = None
+        _use_redis = False
+
+_init_redis()
 
 SESSION_TTL = 60 * 60 * 4  # 4 hours
 
 
 def create_session(session_id: str) -> dict:
-    r = get_redis()
     session = {
         "id": session_id,
         "transcript": [],
@@ -29,19 +40,26 @@ def create_session(session_id: str) -> dict:
         "vectors": [],
         "active": True,
     }
-    r.setex(f"session:{session_id}", SESSION_TTL, json.dumps(session))
+    if _use_redis:
+        _client.setex(f"session:{session_id}", SESSION_TTL, json.dumps(session))
+    else:
+        _in_memory_store[session_id] = session
     return session
 
 
 def get_session(session_id: str) -> Optional[dict]:
-    r = get_redis()
-    data = r.get(f"session:{session_id}")
-    return json.loads(data) if data else None
+    if _use_redis:
+        data = _client.get(f"session:{session_id}")
+        return json.loads(data) if data else None
+    else:
+        return _in_memory_store.get(session_id)
 
 
 def update_session(session_id: str, session: dict):
-    r = get_redis()
-    r.setex(f"session:{session_id}", SESSION_TTL, json.dumps(session))
+    if _use_redis:
+        _client.setex(f"session:{session_id}", SESSION_TTL, json.dumps(session))
+    else:
+        _in_memory_store[session_id] = session
 
 
 def append_transcript(session_id: str, entry: dict):
@@ -73,3 +91,4 @@ def close_session(session_id: str):
     if session:
         session["active"] = False
         update_session(session_id, session)
+

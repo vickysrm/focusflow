@@ -19,7 +19,7 @@ from services.ollama_client import summarize_segment
 router = APIRouter()
 active_connections: dict[str, WebSocket] = {}
 session_buffers: dict[str, dict] = {}
-SUMMARY_WORD_THRESHOLD = 150
+SUMMARY_WORD_THRESHOLD = 50  # Generate summary every ~50 words (~30 seconds of speech)
 MAX_TRANSCRIPT_CHARS = 500_000
 
 

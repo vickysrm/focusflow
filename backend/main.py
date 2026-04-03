@@ -67,6 +67,15 @@ app.include_router(session.router, prefix="/session", tags=["session"])
 app.include_router(transcript.router, prefix="/transcript", tags=["transcript"])
 app.include_router(qa.router, prefix="/qa", tags=["qa"])
 
+@app.get("/")
+def root():
+    return {
+        "message": "Welcome to FocusFlow API",
+        "status": "online",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "FocusFlow API"}

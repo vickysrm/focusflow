@@ -1,12 +1,15 @@
+from dotenv import load_dotenv
+import os
+
+# Load env vars FIRST before any other imports read them
+load_dotenv()
+os.environ.setdefault("HF_HOME", os.path.join(os.getcwd(), "model_cache"))
+
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
-import os
-
-os.environ["HF_HOME"] = os.path.join(os.getcwd(), "model_cache")
 
 from slowapi import Limiter
 from slowapi.middleware import SlowAPIMiddleware

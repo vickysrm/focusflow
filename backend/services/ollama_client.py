@@ -2,8 +2,37 @@ import ollama
 from typing import Optional
 import os
 
-# Default to qwen2:1.5b, but allow override via .env if they prefer mistral etc.
+# Default to local qwen2:1.5b unless requested otherwise
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2:1.5b")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+try:
+    if GROQ_API_KEY:
+        from groq import Groq
+        groq_client = Groq(api_key=GROQ_API_KEY)
+    else:
+        groq_client = None
+except ImportError:
+    groq_client = None
+
+
+def _call_llm(prompt: str) -> str:
+    """Intelligently route to Cloud Groq API if key exists, otherwise local Ollama."""
+    if groq_client:
+        # Use cloud Groq for blazing fast deployment inference
+        chat_completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama3-8b-8192",
+            temperature=0.3,
+        )
+        return chat_completion.choices[0].message.content
+    else:
+        # Fallback to local Ollama daemon
+        response = ollama.chat(model=OLLAMA_MODEL, messages=[
+            {'role': 'user', 'content': prompt}
+        ])
+        return response['message']['content']
+
 
 def summarize_segment(transcript_segment: str) -> str:
     """Generate a 3-5 bullet plain-language summary of a transcript chunk."""
@@ -15,10 +44,7 @@ Start each bullet with a dash (-).
 Transcript segment:
 {transcript_segment}"""
     
-    response = ollama.chat(model=OLLAMA_MODEL, messages=[
-        {'role': 'user', 'content': prompt}
-    ])
-    return response['message']['content']
+    return _call_llm(prompt)
 
 
 def generate_digest(full_transcript: str, action_items: list, decisions: list) -> str:
@@ -45,10 +71,7 @@ Generate a digest with these sections:
 
 Use plain, simple English suitable for someone with dyslexia or ADHD."""
     
-    response = ollama.chat(model=OLLAMA_MODEL, messages=[
-        {'role': 'user', 'content': prompt}
-    ])
-    return response['message']['content']
+    return _call_llm(prompt)
 
 
 def answer_question(question: str, context_chunks: list[str]) -> str:
@@ -66,7 +89,4 @@ Meeting context:
 
 Question: {question}"""
     
-    response = ollama.chat(model=OLLAMA_MODEL, messages=[
-        {'role': 'user', 'content': prompt}
-    ])
-    return response['message']['content']
+    return _call_llm(prompt)

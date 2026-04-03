@@ -33,7 +33,7 @@ export function SummaryCard({ summary }) {
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-300 leading-relaxed">{summary.text}</p>
+        <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{summary.text}</p>
       )}
     </div>
   )

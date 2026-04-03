@@ -60,7 +60,7 @@ export function QAPanel({ sessionId, qaHistory, onAnswer }) {
                 </div>
                 <div className="glass-panel rounded-2xl rounded-bl-sm px-4 py-3 max-w-[85%] relative overflow-hidden group hover:border-white/20 transition-colors">
                   <div className="absolute inset-0 bg-brand-500/5 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <p className="text-sm text-gray-200 leading-relaxed relative z-10">{item.answer}</p>
+                  <p className="text-sm text-gray-200 leading-relaxed relative z-10 whitespace-pre-wrap">{item.answer}</p>
                 </div>
               </div>
             </div>

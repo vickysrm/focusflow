@@ -78,11 +78,11 @@ def answer_question(question: str, context_chunks: list[str]) -> str:
     """Answer a user question using retrieved transcript context."""
     context = "\n---\n".join(context_chunks)
     
-    prompt = f"""You are answering a question from a meeting participant.
-Answer ONLY based on what has been said in this meeting so far.
-If the answer is not clearly present, say: "I don't have enough context from the meeting to answer that yet."
-Never fabricate or infer beyond what was explicitly said.
-Keep your answer short and plain.
+    prompt = f"""You are an intelligent meeting assistant.
+First, try to answer the user's question using the provided meeting context.
+If the context does not contain the answer, you may answer the question using your general knowledge, but briefly mention that it wasn't explicitly discussed in the meeting yet.
+Always organize your answers cleanly using Markdown bullet points or numbered lists if there are multiple parts.
+Keep your answer clear, helpful, and plain.
 
 Meeting context:
 {context}

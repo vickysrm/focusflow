@@ -44,7 +44,7 @@ export function SummaryList({ summaries }) {
     return (
       <div className="flex flex-col items-center justify-center h-48 text-gray-500 gap-2">
         <span className="text-2xl">📋</span>
-        <p className="text-sm">Summaries appear every ~150 words of discussion</p>
+        <p className="text-sm">Summaries appear every ~50 words of discussion</p>
       </div>
     )
   }

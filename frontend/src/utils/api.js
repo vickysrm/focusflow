@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://vigneshwark-focusflow-api.hf.space'
 
 export async function startSession() {
   const res = await fetch(`${BASE_URL}/session/start`, { method: 'POST' })
@@ -29,8 +29,6 @@ export async function getDigest(sessionId) {
 }
 
 export function createWebSocket(sessionId) {
-  const wsBase = import.meta.env.VITE_WS_URL ||
-    (window.location.protocol === 'https:' ? 'wss:' : 'ws:') +
-    '//' + window.location.host
+  const wsBase = import.meta.env.VITE_WS_URL || 'wss://vigneshwark-focusflow-api.hf.space'
   return new WebSocket(`${wsBase}/session/${sessionId}/ws`)
 }

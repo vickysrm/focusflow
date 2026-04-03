@@ -1,41 +1,35 @@
-import ollama
 import os
+import httpx
 
-# Default local model
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2:1.5b")
-
-# Groq client is initialized lazily to ensure env vars are loaded first
-_groq_client = None
-
-def _get_groq_client():
-    global _groq_client
-    if _groq_client is not None:
-        return _groq_client
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return None
-    try:
-        from groq import Groq
-        _groq_client = Groq(api_key=api_key)
-        print("Groq client initialized successfully.")
-        return _groq_client
-    except Exception as e:
-        print(f"Groq init failed: {e}")
-        return None
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama3-8b-8192"
 
 
 def _call_llm(prompt: str) -> str:
-    """Route to Groq if key is available, otherwise Ollama."""
-    client = _get_groq_client()
-    if client:
-        chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama3-8b-8192",
-            temperature=0.3,
+    """Call Groq API directly via HTTP. Falls back to local Ollama if no key."""
+    api_key = os.getenv("GROQ_API_KEY")
+
+    if api_key:
+        # Direct HTTP call to Groq — no package needed, always works
+        response = httpx.post(
+            GROQ_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": GROQ_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+            },
+            timeout=30.0,
         )
-        return chat_completion.choices[0].message.content
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
     else:
         # Fallback to local Ollama
+        import ollama
         response = ollama.chat(model=OLLAMA_MODEL, messages=[
             {'role': 'user', 'content': prompt}
         ])

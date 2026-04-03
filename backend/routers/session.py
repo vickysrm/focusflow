@@ -133,8 +133,8 @@ async def session_websocket(websocket: WebSocket, session_id: str):
                             await websocket.send_json({"type": "summary", "text": summary_text, "timestamp": ts})
                             append_summary(session_id, {"text": summary_text, "timestamp": ts})
                             buf["last_summary_at"] = buf["word_count"]
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"Summary generation error: {e}")
 
             elif msg_type == "behavior":
                 data = message.get("data", {})

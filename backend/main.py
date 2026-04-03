@@ -1,15 +1,12 @@
-from dotenv import load_dotenv
-import os
-
-# Load env vars FIRST before any other imports read them
-load_dotenv()
-os.environ.setdefault("HF_HOME", os.path.join(os.getcwd(), "model_cache"))
-
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+import os
+
+os.environ["HF_HOME"] = os.path.join(os.getcwd(), "model_cache")
 
 from slowapi import Limiter
 from slowapi.middleware import SlowAPIMiddleware
@@ -82,6 +79,24 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "FocusFlow API"}
+
+@app.get("/debug/groq")
+def debug_groq():
+    """Test Groq API key and make a live test call."""
+    import httpx
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        return {"error": "GROQ_API_KEY not set", "key_present": False}
+    try:
+        response = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": "llama3-8b-8192", "messages": [{"role": "user", "content": "Say hello in 3 words."}], "temperature": 0.3},
+            timeout=15.0,
+        )
+        return {"key_present": True, "key_prefix": api_key[:8], "status": response.status_code, "response": response.json()}
+    except Exception as e:
+        return {"key_present": True, "key_prefix": api_key[:8], "error": str(e)}
 
 from ml.rag import _session_stores
 @app.get("/debug/rag/{session_id}")

@@ -1,112 +1,49 @@
-from fastapi import FastAPI, Request, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
 
-os.environ["HF_HOME"] = os.path.join(os.getcwd(), "model_cache")
-
-from slowapi import Limiter
-from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-
-import sentry_sdk
-from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-
-from routers import session, transcript, qa, auth
-from ml.model_cache import ModelCache
-from auth import get_current_user
-
 load_dotenv()
 
-if os.getenv("SENTRY_DSN"):
-    sentry_sdk.init(dsn=os.getenv("SENTRY_DSN"), traces_sample_rate=0.2)
-
-limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute", "10/second"])
+from routers import session, transcript, qa
+from ml.embeddings import load_embedding_model
+from ml.topic_model import load_topic_model
+from ml.classifier import load_classifier
+from ml.drift_detector import load_drift_model
+from ml.rewriter import load_rewriter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.model_cache = ModelCache()
-    print("Model cache initialized.")
+    print("Loading ML models...")
+    app.state.embedder = load_embedding_model()
+    app.state.topic_model = load_topic_model()
+    app.state.classifier = load_classifier()
+    app.state.drift_model = load_drift_model()
+    app.state.rewriter = load_rewriter()
+    print("All ML models loaded.")
     yield
     print("Shutting down.")
 
 app = FastAPI(title="FocusFlow API", version="1.0.0", lifespan=lifespan)
 
-if os.getenv("ENV", "dev").lower() == "prod":
-    app.add_middleware(HTTPSRedirectMiddleware)
-
-app.add_middleware(SlowAPIMiddleware)
-app.state.limiter = limiter
-
-origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global error handler wiring
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(
-        status_code=429,
-        content={"detail": "Rate limit exceeded. Please retry later."},
-    )
-
-app.add_middleware(SentryAsgiMiddleware)
-
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(session.router, prefix="/session", tags=["session"])
 app.include_router(transcript.router, prefix="/transcript", tags=["transcript"])
 app.include_router(qa.router, prefix="/qa", tags=["qa"])
 
-@app.get("/")
-def root():
-    return {
-        "message": "Welcome to FocusFlow API",
-        "status": "online",
-        "docs": "/docs",
-        "health": "/health"
-    }
+from auth import get_current_user
+from fastapi import Depends
 
-@app.get("/health")
+@app.get("/health", dependencies=[Depends(get_current_user)])
 def health():
     return {"status": "ok", "service": "FocusFlow API"}
-
-@app.get("/debug/groq")
-def debug_groq():
-    """Test Groq API key and make a live test call."""
-    import httpx
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        return {"error": "GROQ_API_KEY not set", "key_present": False}
-    try:
-        response = httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "llama3-8b-8192", "messages": [{"role": "user", "content": "Say hello in 3 words."}], "temperature": 0.3},
-            timeout=15.0,
-        )
-        return {"key_present": True, "key_prefix": api_key[:8], "status": response.status_code, "response": response.json()}
-    except Exception as e:
-        return {"key_present": True, "key_prefix": api_key[:8], "error": str(e)}
-
-from ml.rag import _session_stores
-@app.get("/debug/rag/{session_id}")
-def debug_rag(session_id: str):
-    store = _session_stores.get(session_id)
-    if not store:
-        return {"status": "not_found", "total_sessions": list(_session_stores.keys())}
-    return {
-        "status": "found",
-        "ntotal": store["index"].ntotal,
-        "sentences": store["sentences"],
-        "timestamps": store["timestamps"],
-    }

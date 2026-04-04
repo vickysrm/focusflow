@@ -67,7 +67,7 @@ def train_classifier():
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         learning_rate=2e-5,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,

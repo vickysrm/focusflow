@@ -1,94 +1,168 @@
-import os
-import httpx
+﻿import os
+from typing import Iterable, List, Optional
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2:1.5b")
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama3-8b-8192"
+try:
+    import groq
+except ImportError:
+    groq = None
 
+try:
+    import ollama
+except ImportError:
+    ollama = None
 
-def _call_llm(prompt: str) -> str:
-    """Call Groq API directly via HTTP. Falls back to local Ollama if no key."""
-    api_key = os.getenv("GROQ_API_KEY")
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama-3.1-8b-instant')
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'openai/gpt-oss-20b')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-    if api_key:
-        # Direct HTTP call to Groq — no package needed, always works
-        response = httpx.post(
-            GROQ_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": GROQ_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.3,
-            },
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        # Fallback to local Ollama
-        import ollama
-        response = ollama.chat(model=OLLAMA_MODEL, messages=[
-            {'role': 'user', 'content': prompt}
-        ])
-        return response['message']['content']
+SYSTEM_PROMPT = (
+    'You are a helpful meeting assistant. Use plain language, keep your response concise, and answer using only the provided meeting content.'
+)
 
 
-def summarize_segment(transcript_segment: str) -> str:
-    """Generate a 3-5 bullet plain-language summary of a transcript chunk."""
-    prompt = f"""You are a meeting assistant for a neurodiverse professional with ADHD or dyslexia.
-Summarize the following meeting segment in 3-5 short bullet points.
-Use plain, simple English. No jargon. No filler. Only substance.
-Start each bullet with a dash (-).
+def _normalize_response(response: object) -> str:
+    if response is None:
+        return ''
 
-Transcript segment:
-{transcript_segment}"""
-    
+    if isinstance(response, str):
+        return response.strip()
+
+    if isinstance(response, dict):
+        message = response.get('message')
+        if isinstance(message, dict):
+            return str(message.get('content', '') or '').strip()
+        if isinstance(message, str):
+            return message.strip()
+        if 'choices' in response:
+            choices = response.get('choices')
+            if isinstance(choices, list) and choices:
+                first = choices[0]
+                if isinstance(first, dict):
+                    return str(first.get('message', {}).get('content', '') or '').strip()
+        return str(response).strip()
+
+    if hasattr(response, 'get'):
+        try:
+            message = response.get('message')
+            if isinstance(message, dict):
+                return str(message.get('content', '') or '').strip()
+        except Exception:
+            pass
+
+    if hasattr(response, 'message'):
+        message = getattr(response, 'message')
+        if isinstance(message, dict):
+            return str(message.get('content', '') or '').strip()
+        if isinstance(message, str):
+            return message.strip()
+
+    return str(response).strip()
+
+
+def _truncate_text(text: str, max_chars: int = 3000) -> str:
+    return text if len(text) <= max_chars else text[-max_chars:]
+
+
+def _get_groq_client():
+    if not GROQ_API_KEY or groq is None:
+        return None
+    return groq.Client(api_key=GROQ_API_KEY)
+
+
+def _call_groq(prompt: str, documents: Optional[List[str]] = None) -> str:
+    client = _get_groq_client()
+    if client is None:
+        raise RuntimeError('GROQ client is unavailable')
+
+    if documents:
+        context = '\n\n'.join(documents)
+        prompt = f"{prompt}\n\nMeeting context:\n{context}"
+
+    response = client.chat.completions.create(
+        messages=[
+            {'role': 'system', 'content': SYSTEM_PROMPT},
+            {'role': 'user', 'content': prompt},
+        ],
+        model=GROQ_MODEL,
+        temperature=0.2,
+        max_completion_tokens=512,
+    )
+    return _normalize_response(response)
+
+
+def _call_ollama(prompt: str, documents: Optional[List[str]] = None) -> str:
+    if ollama is None:
+        raise RuntimeError('Ollama client is unavailable')
+
+    if documents:
+        context = '\n\n'.join(documents)
+        prompt = f"{prompt}\n\nMeeting context:\n{context}"
+
+    response = ollama.chat(
+        model=OLLAMA_MODEL,
+        messages=[
+            {'role': 'system', 'content': SYSTEM_PROMPT},
+            {'role': 'user', 'content': prompt},
+        ],
+        stream=False,
+    )
+    return _normalize_response(response)
+
+
+def _call_llm(prompt: str, documents: Optional[List[str]] = None) -> str:
+    if GROQ_API_KEY and groq is not None:
+        try:
+            return _call_groq(prompt, documents=documents)
+        except Exception:
+            pass
+
+    if ollama is not None:
+        return _call_ollama(prompt, documents=documents)
+
+    raise RuntimeError('No available LLM backend. Install groq or ollama and configure the environment.')
+
+
+def summarize_segment(text: str) -> str:
+    if not text:
+        return ''
+    text = _truncate_text(text, max_chars=3000)
+    prompt = (
+        'Summarize the following meeting transcript segment into a concise, plain-language summary. '
+        'Focus on the key ideas, decisions, and action items where possible. Do not invent information.\n\n'
+        f'Transcript segment:\n{text}'
+    )
     return _call_llm(prompt)
 
 
-def generate_digest(full_transcript: str, action_items: list, decisions: list) -> str:
-    """Generate a post-meeting digest."""
-    items_str = "\n".join(f"- {i}" for i in action_items) or "None identified"
-    decisions_str = "\n".join(f"- {d}" for d in decisions) or "None identified"
-    
-    prompt = f"""You are a meeting assistant. Generate a clean post-meeting digest.
+def answer_question(question: str, context_chunks: Iterable[str]) -> str:
+    if not question:
+        return 'No question provided.'
+    context_text = '\n'.join(context_chunks) if context_chunks else ''
+    if len(context_text) > 3000:
+        context_text = _truncate_text(context_text, max_chars=3000)
 
-Action items identified:
-{items_str}
-
-Decisions made:
-{decisions_str}
-
-Full transcript:
-{full_transcript}
-
-Generate a digest with these sections:
-1. TL;DR (2-3 sentences max)
-2. Key decisions
-3. Action items with owners if mentioned
-4. Open questions to follow up on
-
-Use plain, simple English suitable for someone with dyslexia or ADHD."""
-    
+    prompt = (
+        'You are a meeting assistant. Answer the user question using only the provided meeting context. '
+        'If the answer is not contained in the context, say that you do not know. Keep the answer short and factual.\n\n'
+        f'Meeting context:\n{context_text}\n\nQuestion: {question}\nAnswer:'
+    )
     return _call_llm(prompt)
 
 
-def answer_question(question: str, context_chunks: list[str]) -> str:
-    """Answer a user question using retrieved transcript context."""
-    context = "\n---\n".join(context_chunks)
-    
-    prompt = f"""You are an intelligent meeting assistant.
-First, try to answer the user's question using the provided meeting context.
-If the context does not contain the answer, you may answer the question using your general knowledge, but briefly mention that it wasn't explicitly discussed in the meeting yet.
-Always organize your answers cleanly using Markdown bullet points or numbered lists if there are multiple parts.
-Keep your answer clear, helpful, and plain.
+def generate_digest(full_text: str, action_items: Optional[List[str]] = None, decisions: Optional[List[str]] = None) -> str:
+    if not full_text:
+        return 'No transcript available.'
 
-Meeting context:
-{context}
+    action_items = action_items or []
+    decisions = decisions or []
+    transcript = _truncate_text(full_text, max_chars=4000)
 
-Question: {question}"""
-    
+    prompt = (
+        'Create a concise meeting digest with a short summary, key takeaways, and a brief list of action items and decisions. '
+        'Keep the tone professional and easy to read.\n\n'
+        f'Transcript:\n{transcript}\n\n'
+        f'Action items:\n{chr(10).join(action_items) if action_items else "None"}\n\n'
+        f'Decisions:\n{chr(10).join(decisions) if decisions else "None"}\n\n'
+        'Digest:'
+    )
     return _call_llm(prompt)

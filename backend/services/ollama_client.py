@@ -8,7 +8,7 @@ GROQ_MODEL = "llama3-8b-8192"
 
 def _call_llm(prompt: str) -> str:
     """Call Groq API directly via HTTP. Falls back to local Ollama if no key."""
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("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")
 
     if api_key:
         # Direct HTTP call to Groq — no package needed, always works

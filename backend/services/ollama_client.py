@@ -1,4 +1,4 @@
-﻿import os
+import os
 from typing import Iterable, List, Optional
 
 try:
@@ -23,7 +23,6 @@ SYSTEM_PROMPT = (
 def _normalize_response(response: object) -> str:
     if response is None:
         return ''
-
     if isinstance(response, str):
         return response.strip()
 
